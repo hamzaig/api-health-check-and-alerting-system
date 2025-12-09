@@ -138,3 +138,35 @@ export async function checkAllEndpoints(): Promise<HealthCheckResult[]> {
 
   return results;
 }
+
+export async function checkDueEndpoints(): Promise<HealthCheckResult[]> {
+  await connectDB();
+  const endpoints = await Endpoint.find();
+  const now = Date.now();
+  const results: HealthCheckResult[] = [];
+
+  for (const endpoint of endpoints) {
+    const intervalMs = Math.max(endpoint.checkInterval || 60000, MIN_CHECK_INTERVAL_MS);
+
+    const latestCheck = await Check.findOne({ endpointId: endpoint._id })
+      .sort({ timestamp: -1 })
+      .select('timestamp');
+
+    const lastCheckedAt = latestCheck?.timestamp?.getTime() || 0;
+    const isDue = now - lastCheckedAt >= intervalMs;
+
+    if (!isDue) continue;
+
+    const result = await runHealthCheckForEndpoint(endpoint);
+    results.push({
+      endpointId: endpoint._id,
+      url: endpoint.url,
+      name: endpoint.name,
+      status: result.status,
+      responseTime: result.responseTime,
+      errorMessage: result.errorMessage,
+    });
+  }
+
+  return results;
+}

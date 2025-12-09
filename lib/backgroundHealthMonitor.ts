@@ -1,7 +1,4 @@
-import connectDB from './mongodb';
-import Endpoint from './models/Endpoint';
-import Check from './models/Check';
-import { MIN_CHECK_INTERVAL_MS, runHealthCheckForEndpoint } from './healthCheckService';
+import { checkDueEndpoints } from './healthCheckService';
 
 const CHECK_LOOKUP_INTERVAL_MS = 5000;
 
@@ -19,24 +16,7 @@ async function runDueChecks() {
   workerState.running = true;
 
   try {
-    await connectDB();
-    const endpoints = await Endpoint.find();
-    const now = Date.now();
-
-    for (const endpoint of endpoints) {
-      const intervalMs = Math.max(endpoint.checkInterval || 60000, MIN_CHECK_INTERVAL_MS);
-
-      const latestCheck = await Check.findOne({ endpointId: endpoint._id })
-        .sort({ timestamp: -1 })
-        .select('timestamp');
-
-      const lastCheckedAt = latestCheck?.timestamp?.getTime() || 0;
-      const isDue = now - lastCheckedAt >= intervalMs;
-
-      if (!isDue) continue;
-
-      await runHealthCheckForEndpoint(endpoint);
-    }
+    await checkDueEndpoints();
   } catch (error) {
     console.error('Background health check worker failed', error);
   } finally {
